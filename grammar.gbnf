@@ -1,0 +1,3 @@
+root    ::= answer stop?
+answer  ::= "yes" | "no"
+stop    ::= "<|end|>"
