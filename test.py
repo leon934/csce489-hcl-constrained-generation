@@ -1,5 +1,5 @@
 import json
-from llama_cpp import Llama, LlamaGrammar
+from llama_cpp import Llama, LlamaGrammar, llama_chat_format
 
 grammar = LlamaGrammar.from_file("grammar.gbnf")
 
@@ -7,8 +7,24 @@ llm = Llama(
     model_path="./models/Phi-3-mini-4k-instruct-q4.gguf", #https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf
 )
 
+template = llm.metadata["tokenizer.chat_template"]
+bos = llm._model.token_get_text(llm.token_bos())
+eos = llm._model.token_get_text(llm.token_eos())
+
+formatter = llama_chat_format.Jinja2ChatFormatter(
+    template=template,
+    bos_token=bos,
+    eos_token=eos,
+    add_generation_prompt=True,
+)
+
+messages = [{"role": "user", "content": "Did the CIA kill JFK?"}]
+prompt = formatter(messages=messages).prompt
+
+print(prompt)
+
 resp = llm.create_completion(
-	prompt="Is Paris the capitol of France? ",
+	prompt=prompt,
     grammar=grammar
 )
 
