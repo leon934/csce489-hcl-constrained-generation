@@ -1,9 +1,12 @@
-from argparse import ArgumentParser
 import json
+from argparse import ArgumentParser
+import os
+
 from llama_cpp import Llama, LlamaGrammar, llama_chat_format
 from datasets import load_dataset
 from tqdm import tqdm
 
+from validate import validate_terraform_files
 
 parser = ArgumentParser()
 parser.add_argument('-c', '--count', type=int, default=-1, help="number of lines from the dataset to run, defaults to all (-1)")
@@ -49,8 +52,14 @@ if __name__ == "__main__":
 		ds = ds['test'].select(range(args.count))
 	else:
 		ds = ds['test']
-	
-	for example in tqdm(ds):
+
+	# creates directory for all generated tf files	
+	model_output_path = rf"{os.path.dirname(os.path.abspath(__file__))}/raw_outputs"
+
+	if not os.path.exists(model_output_path):
+		os.makedirs(model_output_path)
+
+	for i, example in tqdm(enumerate(ds)):
 		original_prompt = example["Prompt"]
 	
 		messages = [{"role": "user", "content": "You are a code-writer for the HCL language. Report all your answers as only HCL code.\nPrompt: " + original_prompt}]
@@ -65,4 +74,15 @@ if __name__ == "__main__":
 		
 		# print(json.dumps(resp, indent=2))
 		#TODO: replace this write with saving the response as a file temporarily for further validation?
+		# instead of temporarily saving it, i feel like storing it at least locally helps in case of future errors.
 		tqdm.write(output_format.format(prompt=original_prompt, output=resp['choices'][0]['text']))
+		
+    # assumes model's response is purely just the tf code
+		model_resp = resp["choices"][0]["text"]
+		
+		# each row corresponds to i-th idx in original iac-eval dataset
+		with open(rf"{model_output_path}/response_{i}.tf", "w") as f:
+			f.write(model_resp)
+
+		# then use imported function to validate each generated .tf file
+		valid_tf_path = validate_terraform_files(model_output_path)
