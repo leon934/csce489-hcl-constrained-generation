@@ -5,6 +5,7 @@ import os
 from llama_cpp import Llama, LlamaGrammar, llama_chat_format
 from datasets import load_dataset
 from tqdm import tqdm
+from pathlib import Path
 
 from validate import validate_terraform_files
 
@@ -84,5 +85,5 @@ if __name__ == "__main__":
 		with open(rf"{model_output_path}/response_{i}.tf", "w") as f:
 			f.write(model_resp)
 
-		# then use imported function to validate each generated .tf file
-		valid_tf_path = validate_terraform_files(model_output_path)
+	# then use imported function to validate each generated .tf file
+	valid_tf_path = validate_terraform_files(Path(model_output_path))
