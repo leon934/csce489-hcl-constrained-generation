@@ -34,7 +34,7 @@ def validate_terraform_files(path_to_terraform_files: Path) -> Path:
   with tempfile.TemporaryDirectory() as temp_dir:
     temp_dir_path = Path(temp_dir)
 
-    for tf_file_path in tqdm(terraform_files, desc="Iterating through .tf files..."):
+    for tf_file_path in tqdm(terraform_files, desc="Iterating through .tf files"):
       # remove the file from temp directory to test next one
       for temp_file in temp_dir_path.iterdir():
         if temp_file.is_file() or temp_file.is_symlink():
@@ -90,4 +90,5 @@ def validate_terraform_files(path_to_terraform_files: Path) -> Path:
 
 if __name__ == "__main__":
   model_output_path = rf"{os.path.dirname(os.path.abspath(__file__))}/raw_outputs"
-  print(validate_terraform_files(Path(model_output_path)))
+  valid_output_path = validate_terraform_files(Path(model_output_path))
+  print(valid_output_path)

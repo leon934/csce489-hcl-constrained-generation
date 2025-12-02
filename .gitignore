@@ -2,3 +2,4 @@
 models/
 raw_outputs/
 valid_outputs/
+__pycache__/
