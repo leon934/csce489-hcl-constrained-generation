@@ -49,6 +49,7 @@ if __name__ == "__main__":
 	    n_ctx=4096, # increase context because we can for some reason
 		n_threads=8,
 	    verbose=args.verbosity >= 3, # hide output of model, pollutes terminal
+		n_gpu_layers=-1
 	)
 	
 	template = llm.metadata["tokenizer.chat_template"]
