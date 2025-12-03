@@ -1,10 +1,27 @@
-import subprocess
 import os
+import re
 import shutil
+import subprocess
 import tempfile
 from pathlib import Path
 
 from tqdm import tqdm
+
+
+def strip_hcl_fence(raw_text: str) -> str:
+  """Return Terraform content without surrounding ```hcl fences if present."""
+  fence_pattern = re.compile(r"```(?:hcl)?\s*\n?(.*?)\s*```", re.IGNORECASE | re.DOTALL)
+  match = fence_pattern.search(raw_text)
+  if match:
+    inner = match.group(1).strip()
+    if inner and not inner.endswith("\n"):
+      inner += "\n"
+    return inner
+
+  # no fences found; ensure newline termination for terraform fmt friendliness
+  if raw_text and not raw_text.endswith("\n"):
+    return raw_text + "\n"
+  return raw_text
 
 def validate_terraform_files(path_to_terraform_files: Path) -> Path:
   '''
@@ -30,6 +47,13 @@ def validate_terraform_files(path_to_terraform_files: Path) -> Path:
   # "terraform init" isn't required to be ran if there are no new files TO configure, but it's wtv if we run it anyways
   valid_tf_file_paths = []
 
+  sanitized_cache = {}
+
+  stripped_directory_path = Path(f"{path_to_terraform_files.parent}/stripped_outputs")
+  if os.path.exists(stripped_directory_path):
+    shutil.rmtree(stripped_directory_path)
+  os.makedirs(stripped_directory_path, exist_ok=True)
+
   # creates a temporary directory to test each file individually
   with tempfile.TemporaryDirectory() as temp_dir:
     temp_dir_path = Path(temp_dir)
@@ -42,8 +66,16 @@ def validate_terraform_files(path_to_terraform_files: Path) -> Path:
         elif temp_file.is_dir():
             shutil.rmtree(temp_file)
 
-      # copy the file into temp directory
-      shutil.copy(tf_file_path, temp_dir_path)
+      # copy the sanitized file into temp directory
+      raw_text = tf_file_path.read_text(encoding="utf-8")
+      sanitized_text = strip_hcl_fence(raw_text)
+      sanitized_cache[tf_file_path] = sanitized_text
+
+      stripped_destination = stripped_directory_path / tf_file_path.name
+      stripped_destination.write_text(sanitized_text, encoding="utf-8")
+
+      destination_path = temp_dir_path / tf_file_path.name
+      destination_path.write_text(sanitized_text, encoding="utf-8")
 
       # runs "terraform init" and checks error code to see if it ran properly
       # -backend=false prevents command from trying to connect to backend, which might cause the model to fail
@@ -78,7 +110,11 @@ def validate_terraform_files(path_to_terraform_files: Path) -> Path:
   os.makedirs(valid_directory_path, exist_ok=True)
 
   for terraform_file_path in valid_tf_file_paths:
-    shutil.copy(terraform_file_path, valid_directory_path)
+    sanitized_text = sanitized_cache.get(terraform_file_path)
+    if sanitized_text is None:
+      sanitized_text = strip_hcl_fence(terraform_file_path.read_text(encoding="utf-8"))
+    destination_path = valid_directory_path / terraform_file_path.name
+    destination_path.write_text(sanitized_text, encoding="utf-8")
 
   # once we have the files that pass "terraform init", we then run the command again so it properly is able to be used w/ terraform
   tqdm.write(f"Number of .tf files that passed 'terraform init' and 'terraform validate': {len(valid_tf_file_paths)}/{len(terraform_files)} = {len(valid_tf_file_paths)/float(len(terraform_files)):.2f}")
