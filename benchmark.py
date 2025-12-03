@@ -93,20 +93,25 @@ if __name__ == "__main__":
 		    grammar=grammar
 		)
 		
+		# strip markdown (if necessary)
+		# assumes model's response is purely just the tf code
+		model_resp = resp["choices"][0]["text"]
+		
+		stripped_response = model_resp.removeprefix("```hcl").removeprefix(" ```hcl").removesuffix("```")
+		
+		
 		# print(json.dumps(resp, indent=2))
 		#TODO: replace this write with saving the response as a file temporarily for further validation?
 		# instead of temporarily saving it, i feel like storing it at least locally helps in case of future errors.
 		if args.verbosity >= 2:
-			tqdm.write(output_format.format(prompt=original_prompt, output=resp['choices'][0]['text']))
+			tqdm.write(output_format.format(prompt=original_prompt, output=stripped_response))
 		
-    # assumes model's response is purely just the tf code
-		model_resp = resp["choices"][0]["text"]
 		
 		# each row corresponds to i-th idx in original iac-eval dataset
 		filename = rf"{model_output_path}/response_{i}.tf"
-		with open(filename, "w") as f:
+		with open(filename, "w", encoding="utf-8") as f:
 			try:
-				f.write(model_resp)
+				f.write(stripped_response)
 			except UnicodeEncodeError:
 				tqdm.write(f"Unicode error saving file {filename}. Skipping.")
 			except IOError:
