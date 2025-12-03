@@ -20,13 +20,17 @@ formatter = llama_chat_format.Jinja2ChatFormatter(
 )
 
 messages = [{"role": "user", "content": "Write a terrafrom module for an S3 bucket named lyle-test"}]
-prompt = formatter(messages=messages).prompt
+prompt = """<|user|>
+You are a code-writer for the HCL language. Report all your answers as plain HCL code. DO NOT wrap the code in a Markdown code block.
+Prompt: Configure a query log that can create a log stream and put log events using Route 53 resources. Name the zone "primary", the cloudwatch log group "aws_route53_example_com", and the cloudwatch log resource policy "route53-query-logging-policy"<|end|>
+<|assistant|>"""
 
 print(prompt)
 
 resp = llm.create_completion(
 	prompt=prompt,
     grammar=grammar,
+    max_tokens=10_000,
     top_p = 1.0,
     top_k = 1_000_000,
 )

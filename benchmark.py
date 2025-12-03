@@ -87,6 +87,8 @@ if __name__ == "__main__":
 		messages = [{"role": "user", "content": input_format.format(prompt=original_prompt)}]
 		prompt = formatter(messages=messages).prompt
 		
+		print(prompt)
+
 		resp = llm.create_completion(
 			prompt=prompt,
 			max_tokens=None,
