@@ -39,15 +39,17 @@ def validate_terraform_files(path_to_terraform_files: Path) -> Path:
 
   # gets list of all terraform files
   terraform_files = list(path_to_terraform_files.glob("*.tf"))
+  total_files = len(terraform_files)
 
-  if len(terraform_files) == 0:
+  if total_files == 0:
     return
 
   # first run terraform init
   # "terraform init" isn't required to be ran if there are no new files TO configure, but it's wtv if we run it anyways
   valid_tf_file_paths = []
-
-  sanitized_cache = {}
+  formatted_cache = {}
+  fmt_pass_count = 0
+  validate_pass_count = 0
 
   stripped_directory_path = Path(f"{path_to_terraform_files.parent}/stripped_outputs")
   if os.path.exists(stripped_directory_path):
@@ -58,48 +60,79 @@ def validate_terraform_files(path_to_terraform_files: Path) -> Path:
   with tempfile.TemporaryDirectory() as temp_dir:
     temp_dir_path = Path(temp_dir)
 
-    for tf_file_path in tqdm(terraform_files, desc="Iterating through .tf files"):
-      # remove the file from temp directory to test next one
-      for temp_file in temp_dir_path.iterdir():
-        if temp_file.is_file() or temp_file.is_symlink():
+    with tqdm(total=total_files, desc="Iterating through .tf files") as progress_bar:
+      for tf_file_path in terraform_files:
+        # remove the file from temp directory to test next one
+        for temp_file in temp_dir_path.iterdir():
+          if temp_file.is_file() or temp_file.is_symlink():
             temp_file.unlink()
-        elif temp_file.is_dir():
+          elif temp_file.is_dir():
             shutil.rmtree(temp_file)
 
-      # copy the sanitized file into temp directory
-      raw_text = tf_file_path.read_text(encoding="utf-8")
-      sanitized_text = strip_hcl_fence(raw_text)
-      sanitized_cache[tf_file_path] = sanitized_text
+        # copy the sanitized file into temp directory
+        raw_text = tf_file_path.read_text(encoding="utf-8")
+        sanitized_text = strip_hcl_fence(raw_text)
+        formatted_cache[tf_file_path] = sanitized_text
 
-      stripped_destination = stripped_directory_path / tf_file_path.name
-      stripped_destination.write_text(sanitized_text, encoding="utf-8")
+        stripped_destination = stripped_directory_path / tf_file_path.name
+        stripped_destination.write_text(sanitized_text, encoding="utf-8")
 
-      destination_path = temp_dir_path / tf_file_path.name
-      destination_path.write_text(sanitized_text, encoding="utf-8")
+        destination_path = temp_dir_path / tf_file_path.name
+        destination_path.write_text(sanitized_text, encoding="utf-8")
 
-      # runs "terraform init" and checks error code to see if it ran properly
-      # -backend=false prevents command from trying to connect to backend, which might cause the model to fail
-      init_proc = subprocess.run(
-        ["terraform", "init", "-backend=false"], 
-        cwd=str(temp_dir_path), 
-        capture_output=True, 
-        text=True
-      )
+        def refresh_progress_bar():
+          progress_bar.set_postfix(
+            fmt=f"{fmt_pass_count}/{total_files} ({(fmt_pass_count/total_files)*100:.0f}%)",
+            validate=f"{validate_pass_count}/{total_files} ({(validate_pass_count/total_files)*100:.0f}%)"
+          )
+
+        fmt_proc = subprocess.run(
+          ["terraform", "fmt", tf_file_path.name],
+          cwd=str(temp_dir_path),
+          capture_output=True,
+          text=True
+        )
+
+        if fmt_proc.returncode != 0:
+          progress_bar.update(1)
+          refresh_progress_bar()
+          continue
+
+        fmt_pass_count += 1
+
+        formatted_text = destination_path.read_text(encoding="utf-8")
+        formatted_cache[tf_file_path] = formatted_text
+        stripped_destination.write_text(formatted_text, encoding="utf-8")
+
+        # runs "terraform init" and checks error code to see if it ran properly
+        # -backend=false prevents command from trying to connect to backend, which might cause the model to fail
+        init_proc = subprocess.run(
+          ["terraform", "init", "-backend=false"], 
+          cwd=str(temp_dir_path), 
+          capture_output=True, 
+          text=True
+        )
       
-      # retcode = 0 means success
-      if init_proc.returncode != 0:
-        continue
+        # retcode = 0 means success
+        if init_proc.returncode != 0:
+          progress_bar.update(1)
+          refresh_progress_bar()
+          continue
 
-      # we then move onto "terraform validate" if no errors occurred
-      validate_proc = subprocess.run(
-        ["terraform", "validate"],
-        cwd=str(temp_dir_path),
-        capture_output=True,
-        text=True
-      )
+        # we then move onto "terraform validate" if no errors occurred
+        validate_proc = subprocess.run(
+          ["terraform", "validate"],
+          cwd=str(temp_dir_path),
+          capture_output=True,
+          text=True
+        )
 
-      if validate_proc.returncode == 0:
-        valid_tf_file_paths.append(tf_file_path)
+        if validate_proc.returncode == 0:
+          valid_tf_file_paths.append(tf_file_path)
+          validate_pass_count += 1
+
+        progress_bar.update(1)
+        refresh_progress_bar()
 
   valid_directory_path = Path(f"{path_to_terraform_files.parent}/valid_outputs")
 
@@ -110,14 +143,21 @@ def validate_terraform_files(path_to_terraform_files: Path) -> Path:
   os.makedirs(valid_directory_path, exist_ok=True)
 
   for terraform_file_path in valid_tf_file_paths:
-    sanitized_text = sanitized_cache.get(terraform_file_path)
-    if sanitized_text is None:
-      sanitized_text = strip_hcl_fence(terraform_file_path.read_text(encoding="utf-8"))
+    formatted_text = formatted_cache.get(terraform_file_path)
+    if formatted_text is None:
+      formatted_text = strip_hcl_fence(terraform_file_path.read_text(encoding="utf-8"))
     destination_path = valid_directory_path / terraform_file_path.name
-    destination_path.write_text(sanitized_text, encoding="utf-8")
+    destination_path.write_text(formatted_text, encoding="utf-8")
 
-  # once we have the files that pass "terraform init", we then run the command again so it properly is able to be used w/ terraform
-  tqdm.write(f"Number of .tf files that passed 'terraform init' and 'terraform validate': {len(valid_tf_file_paths)}/{len(terraform_files)} = {len(valid_tf_file_paths)/float(len(terraform_files)):.2f}")
+  if terraform_files:
+    fmt_ratio = fmt_pass_count / float(total_files)
+    validate_ratio = validate_pass_count / float(total_files)
+    tqdm.write(
+      f"Number of .tf files that passed 'terraform fmt': {fmt_pass_count}/{len(terraform_files)} = {fmt_ratio:.2f}"
+    )
+    tqdm.write(
+      f"Number of .tf files that passed 'terraform init' and 'terraform validate': {validate_pass_count}/{len(terraform_files)} = {validate_ratio:.2f}"
+    )
 
   return valid_directory_path
 

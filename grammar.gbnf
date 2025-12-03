@@ -1,3 +1,148 @@
-root    ::= answer stop?
-answer  ::= "yes" | "no"
-stop    ::= "<|end|>"
+# Terraform HCL2 (simplified) GBNF grammar
+#
+# Focus:
+#   - Blocks and attributes (arguments)
+#   - Expressions with operator precedence
+#   - Lists, objects, for-expressions
+#   - Indexing, attribute access, splats, function calls
+#   - Double-quoted strings with ${...} interpolation
+#
+# Omissions / simplifications:
+#   - No heredoc / indented heredoc strings (<<EOF / <<-EOF)
+#   - No template directives (%{ ... }) or strip markers (~)
+#   - Identifiers limited to ASCII [A-Za-z0-9_-]
+#   - No provider-specific schemas, only generic HCL syntax
+
+# -------------------------
+# Top-level configuration
+# -------------------------
+
+root ::= "hcl```\n" root3 "\n```"
+
+root3 ::= ws (statement ws)*
+
+statement ::= block | attribute
+
+block ::= identifier labels? "{" ws (statement ws)* "}" ws
+
+labels ::= label+
+
+label ::= identifier | string-lit
+
+attribute ::= identifier "=" ws expression
+
+# -------------------------
+# Expressions (precedence)
+# -------------------------
+
+expression ::= conditional
+
+conditional ::= logical-or ( "?" ws expression ":" ws expression )?
+
+logical-or ::= logical-and ( "||" ws logical-and )*
+
+logical-and ::= equality ( "&&" ws equality )*
+
+equality ::= comparison ( ( "==" | "!=" ) ws comparison )*
+
+comparison ::= additive ( ( ">=" | "<=" | ">" | "<" ) ws additive )*
+
+additive ::= multiplicative ( ( "+" | "-" ) ws multiplicative )*
+
+multiplicative ::= unary ( ( "*" | "/" | "%" ) ws unary )*
+
+unary ::= ( ( "!" | "-" ) ws unary ) | postfix
+
+# -------------------------
+# Postfix: access, splats, calls
+# -------------------------
+
+postfix ::= primary ( postfix-op )*
+
+postfix-op ::= attr-access | index-access | full-splat | attr-splat | func-call
+
+attr-access ::= "." identifier
+
+index-access ::= "[" ws expression "]" ws
+
+full-splat ::= "[" ws "*" ws "]" ws
+
+attr-splat ::= "*" "." identifier
+
+func-call ::= "(" ws func-args? ")" ws
+
+func-args ::= expression ( "," ws expression )* ( "," ws )?
+
+# -------------------------
+# Primary expressions
+# -------------------------
+
+primary ::= number-lit | bool-lit | null-lit | string-lit | list-expr | object-expr | "(" ws expression ")" ws | identifier
+
+# -------------------------
+# List & object expressions
+# -------------------------
+
+list-expr ::= "[" ws ( for-expr-list | expr-list )? "]" ws
+
+expr-list ::= expression ( "," ws expression )* ( "," ws )?
+
+# [for k, v in xs : expr if cond]
+for-expr-list ::= "for" ws for-key "in" ws expression ws ":" ws expression ( ws "if" ws expression )?
+
+for-key ::= identifier ( "," ws identifier )?
+
+object-expr ::= "{" ws ( for-expr-object | object-items )? "}" ws
+
+object-items ::= object-item ( "," ws object-item )* ( "," ws )?
+
+object-item ::= object-key "=" ws expression
+
+object-key ::= identifier | string-lit | "(" ws expression ")" ws
+
+# { for k, v in m : k_expr => v_expr if cond }
+for-expr-object ::= "for" ws for-key "in" ws expression ws ":" ws expression ws "=>" ws expression ( ws "if" ws expression )?
+
+# -------------------------
+# Literals
+# -------------------------
+
+number-lit ::= "-"? ( "0" | [1-9] digit* ) ( "." digit+ )? ( [eE] [+-]? digit+ )? ws
+
+digit ::= [0-9]
+
+bool-lit ::= ( "true" | "false" ) ws
+
+null-lit ::= "null" ws
+
+# -------------------------
+# Strings with interpolation
+# -------------------------
+
+string-lit ::= "\"" string-inner* "\"" ws
+
+string-inner ::= interpolation | escaped-char | template-text
+
+interpolation ::= "${" ws expression "}"
+
+escaped-char ::= "\\" [^\n]
+
+template-text ::= [^"\\$] | "$" [^{]
+
+# -------------------------
+# Identifiers
+# -------------------------
+
+identifier ::= identifier-start identifier-char* ws
+
+identifier-start ::= [A-Za-z_]
+
+identifier-char ::= [0-9A-Za-z_-]
+
+# -------------------------
+# Whitespace & comments
+# -------------------------
+
+ws ::= ( [ \t\r\n] | comment )*
+
+comment ::= "#" [^\n]* ("\n")? | "//" [^\n]* ("\n")? | "/*" ([^*] | "*" [^/])* "*/"
