@@ -47,7 +47,7 @@ if __name__ == "__main__":
 	llm = Llama(
 	    model_path="./models/Phi-3-mini-4k-instruct-q4.gguf", #https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf
 	    n_ctx=4096, # increase context because we can for some reason
-		n_threads=8,
+		n_threads=2,
 	    verbose=args.verbosity >= 3, # hide output of model, pollutes terminal
 		n_gpu_layers=-1
 	)
@@ -87,7 +87,7 @@ if __name__ == "__main__":
 		messages = [{"role": "user", "content": input_format.format(prompt=original_prompt)}]
 		prompt = formatter(messages=messages).prompt
 		
-		print(prompt)
+		# print(prompt)
 
 		resp = llm.create_completion(
 			prompt=prompt,
