@@ -17,6 +17,9 @@ def strip_hcl_fence(raw_text: str) -> str:
     if inner and not inner.endswith("\n"):
       inner += "\n"
     return inner
+  
+  if raw_text.startswith("hcl```"):
+    return raw_text.split("hcl```")[1]
 
   # no fences found; ensure newline termination for terraform fmt friendliness
   if raw_text and not raw_text.endswith("\n"):

@@ -1,4 +1,4 @@
-root ::= "hcl```\n" hcl "\n```"
+root ::= "```hcl\n" hcl "\n```"
 
 hcl ::= ws (statement ws)*
 
