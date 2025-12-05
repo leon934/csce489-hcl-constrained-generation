@@ -1,5 +1,7 @@
 .venv/
 models/
-raw_outputs/
-valid_outputs/
+raw_outputs*/
+stripped_outputs*/
+valid_outputs*/
 __pycache__/
+llm_judge_responses.json

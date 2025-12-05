@@ -4,12 +4,14 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
+from argparse import ArgumentParser
 
 from tqdm import tqdm
 
-
 def strip_hcl_fence(raw_text: str) -> str:
-  """Return Terraform content without surrounding ```hcl fences if present."""
+  """
+  Return Terraform content without surrounding ```hcl fences if present.
+  """
   fence_pattern = re.compile(r"```(?:hcl)?\s*\n?(.*?)\s*```", re.IGNORECASE | re.DOTALL)
   match = fence_pattern.search(raw_text)
   if match:
@@ -26,7 +28,7 @@ def strip_hcl_fence(raw_text: str) -> str:
     return raw_text + "\n"
   return raw_text
 
-def validate_terraform_files(path_to_terraform_files: Path) -> Path:
+def validate_terraform_files(path_to_terraform_files: Path, grammar_flag: bool) -> Path:
   '''
   validates whether the generated terraform files are syntactically valid
 
@@ -54,9 +56,9 @@ def validate_terraform_files(path_to_terraform_files: Path) -> Path:
   fmt_pass_count = 0
   validate_pass_count = 0
 
-  stripped_directory_path = Path(f"{path_to_terraform_files.parent}/stripped_outputs")
-  if os.path.exists(stripped_directory_path):
-    shutil.rmtree(stripped_directory_path)
+  stripped_directory_path = Path(f"{path_to_terraform_files.parent}/stripped_outputs{'_grammar' if grammar_flag else ''}")
+  # if os.path.exists(stripped_directory_path):
+  #   shutil.rmtree(stripped_directory_path)
   os.makedirs(stripped_directory_path, exist_ok=True)
 
   # creates a temporary directory to test each file individually
@@ -164,10 +166,28 @@ def validate_terraform_files(path_to_terraform_files: Path) -> Path:
 
   return valid_directory_path
 
-# TODO: how would we actually validate that the terraform file does what the prompt intends?
-# TODO: i'd (leon) think that considering we have the expected output, there's surely some properties we can use to compare truth vs. model response
+def main():
+  parser = ArgumentParser(description="Sanitizes and validates Terraform files using the Terraform CLI. Useful for skipping past generating the outputs given the dataset in benchmark.py.")
+  
+  parser.add_argument(
+      '--raw_dir', 
+      type=str, 
+      required=True, 
+      help="The name of the directory (relative to this script) containing the raw .tf output files from the LLM (e.g., 'raw_outputs')."
+  )
+
+  parser.add_argument(
+      '-g',
+      '--grammar', 
+      action="store_true", 
+      required=True,
+      help="Used for naming conventions in the files."
+  )
+
+  args = parser.parse_args()
+
+  model_output_path = rf"{os.path.dirname(os.path.abspath(__file__))}/{args.raw_dir}"
+  valid_output_path = validate_terraform_files(Path(model_output_path), args.grammar)
 
 if __name__ == "__main__":
-  model_output_path = rf"{os.path.dirname(os.path.abspath(__file__))}/raw_outputs"
-  valid_output_path = validate_terraform_files(Path(model_output_path))
-  print(valid_output_path)
+  main()
